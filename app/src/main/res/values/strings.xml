@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Mentra</string>
+    <string name="telemetry_service_description">Monitors app usage patterns for digital wellbeing analysis</string>
+    <string name="usage_access_required">Usage access permission is required</string>
+    <string name="usage_access_explanation">Mentra needs usage access permission to monitor app usage patterns and help you manage your digital wellbeing.</string>
+    <string name="open_settings">Open Settings</string>
+    <string name="cancel">Cancel</string>
+</resources> 
