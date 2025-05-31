@@ -50,10 +50,10 @@ Most people lose **6+ hours daily** to unproductive phone use. Existing trackers
 ## 📸 Screenshots
 
 > _(Add screenshots in `screenshots/`)_  
-- **Home Dashboard**: `screenshots/home_dashboard.png`  
-- **Usage Trends**: `screenshots/usage_charts.png`  
-- **Nudge Example**: `screenshots/nudge_notification.png`  
-- **Skill Cards**: `screenshots/skill_cards.png`  
+- **Home Dashboard**: `screenshots/home_dashboard.jpg`  
+- **Usage Trends**: `screenshots/usage_charts.jpg`  
+- **Nudge Example**: `screenshots/nudge_notification.jpg`  
+- **Skill Cards**: `screenshots/skill_cards.jpg`  
 
 ---
 
