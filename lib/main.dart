@@ -1,29 +1,27 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:async';
-import 'dart:math';
+import 'package:usage_stats/usage_stats.dart'; // Import usage_stats
 
 void main() {
   runApp(const DigitalWellbeingApp());
 }
 
 class DigitalWellbeingApp extends StatelessWidget {
-  const DigitalWellbeingApp({Key? key}) : super(key: key);
+  const DigitalWellbeingApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Digital Wellbeing',
       theme: ThemeData.dark().copyWith(
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: Colors.blue,
-          brightness: Brightness.dark,
-        ),
+        primaryColor: Colors.blue, // Changed from primarySwatch
         scaffoldBackgroundColor: const Color(0xFF0A0A0A),
-        cardColor: const Color(0xFF1E1E1E),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: Color(0xFF1E1E1E),
-          elevation: 0,
-        ),
+        cardColor: const Color(0xFF1A1A1A),
+        textTheme: ThemeData.dark().textTheme.copyWith( // Correctly extend the dark theme's textTheme
+              bodyLarge: const TextStyle(color: Colors.white),
+              bodyMedium: const TextStyle(color: Colors.white70),
+            ),
       ),
       home: const MainScreen(),
       debugShowCheckedModeBanner: false,
@@ -32,350 +30,792 @@ class DigitalWellbeingApp extends StatelessWidget {
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({Key? key}) : super(key: key);
+  const MainScreen({super.key});
 
   @override
-  State<MainScreen> createState() => _MainScreenState();
+  _MainScreenState createState() => _MainScreenState();
 }
 
 class _MainScreenState extends State<MainScreen> with TickerProviderStateMixin {
   int _selectedIndex = 0;
   late AnimationController _glowController;
   late Animation<double> _glowAnimation;
-
-  @override
-  void initState() {
-    super.initState();
-    _glowController = AnimationController(
-      duration: const Duration(seconds: 2),
-      vsync: this,
-    )..repeat(reverse: true);
-    _glowAnimation = Tween<double>(begin: 0.3, end: 1.0).animate(
-      CurvedAnimation(parent: _glowController, curve: Curves.easeInOut),
-    );
-  }
-
-  @override
-  void dispose() {
-    _glowController.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _selectedIndex,
-        children: const [
-          UsageMonitoringScreen(),
-          NotificationsScreen(),
-        ],
-      ),
-      bottomNavigationBar: Container(
-        decoration: BoxDecoration(
-          color: const Color(0xFF1E1E1E),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.blue.withOpacity(0.3),
-              blurRadius: 20,
-              offset: const Offset(0, -5),
-            ),
-          ],
-        ),
-        child: BottomNavigationBar(
-          currentIndex: _selectedIndex,
-          onTap: (index) => setState(() => _selectedIndex = index),
-          backgroundColor: Colors.transparent,
-          selectedItemColor: Colors.cyanAccent,
-          unselectedItemColor: Colors.grey,
-          elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
-              icon: Icon(Icons.analytics),
-              label: 'Usage',
-            ),
-            BottomNavigationBarItem(
-              icon: Icon(Icons.notifications_active),
-              label: 'Notifications',
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class UsageMonitoringScreen extends StatefulWidget {
-  const UsageMonitoringScreen({Key? key}) : super(key: key);
-
-  @override
-  State<UsageMonitoringScreen> createState() => _UsageMonitoringScreenState();
-}
-
-class _UsageMonitoringScreenState extends State<UsageMonitoringScreen>
-    with TickerProviderStateMixin {
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
-  Timer? _usageTimer;
-  Duration _totalUsage = const Duration(hours: 2, minutes: 34);
   
-  final List<AppUsage> _appUsages = [
-    AppUsage('Social Media', const Duration(hours: 1, minutes: 15), Colors.pink),
-    AppUsage('Games', const Duration(minutes: 45), Colors.orange),
-    AppUsage('Productivity', const Duration(minutes: 25), Colors.green),
-    AppUsage('Entertainment', const Duration(minutes: 9), Colors.purple),
+  List<AppUsage> appUsageList = [];
+  Timer? _usageTimer;
+  Timer? _breakTimer;
+  String motivationMessage = "Stay focused and take breaks!";
+bool _settingsBreakReminders = true;
+  bool _settingsUsageTracking = true;
+  bool _settingsSocialMediaLimits = true;
+  bool _settingsDailyMotivation = true;
+  
+  // Social media apps to monitor
+  final List<String> socialMediaApps = [
+    'Instagram',
+    'Snapchat',
+    'TikTok',
+    'Facebook',
+    'Twitter',
+    'YouTube',
+    'WhatsApp'
   ];
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      duration: const Duration(seconds: 1),
+    _glowController = AnimationController(
+      duration: Duration(seconds: 2),
       vsync: this,
     )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.8, end: 1.2).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
     
-    _startUsageTimer();
+    _glowAnimation = Tween<double>(
+      begin: 0.3,
+      end: 1.0,
+    ).animate(CurvedAnimation(
+      parent: _glowController,
+      curve: Curves.easeInOut,
+    ));
+    
+    _initializeApp();
   }
 
-  void _startUsageTimer() {
-    _usageTimer = Timer.periodic(const Duration(seconds: 30), (timer) {
+  void _initializeApp() {
+    _loadAppUsage();
+    _startUsageMonitoring();
+    _fetchMotivationMessage();
+  }
+
+  List<AppUsage> _getSampleAppUsage() {
+    return [
+      AppUsage('Instagram', const Duration(hours: 2, minutes: 30), true),
+      AppUsage('Snapchat', const Duration(hours: 1, minutes: 45), true),
+      AppUsage('TikTok', const Duration(hours: 3, minutes: 15), true),
+      AppUsage('Facebook', const Duration(hours: 1, minutes: 20), true),
+      AppUsage('YouTube', const Duration(hours: 2, minutes: 45), true),
+      AppUsage('WhatsApp', const Duration(minutes: 45), false),
+      AppUsage('Chrome', const Duration(hours: 1, minutes: 30), false),
+    ];
+  }
+
+  void _loadSampleAppUsage() {
+    if (mounted) {
       setState(() {
-        _totalUsage = _totalUsage + const Duration(seconds: 30);
+        appUsageList = _getSampleAppUsage();
       });
+    }
+  }
+
+  Future<void> _loadAppUsage() async {
+    try {
+      // Check and request permission
+      bool? isGranted = await UsageStats.checkUsagePermission();
+      if (isGranted == null || !isGranted) {
+        print("Usage permission initially not granted. Requesting...");
+        await UsageStats.grantUsagePermission();
+        // Re-check permission after requesting
+        isGranted = await UsageStats.checkUsagePermission();
+        if (isGranted == null || !isGranted) {
+          print("Usage permission not granted by user after request.");
+          _loadSampleAppUsage(); // Load sample data if permission is still not granted
+          return;
+        }
+        print("Usage permission granted by user.");
+      } else {
+        print("Usage permission already granted.");
+      }
+
+      DateTime endDate = DateTime.now();
+      DateTime startDate = endDate.subtract(const Duration(days: 1));
+      print("Querying usage stats from $startDate to $endDate");
+
+      List<UsageInfo> usageStats = await UsageStats.queryUsageStats(startDate, endDate);
+      print("Raw usageStats count: ${usageStats.length}");
+      for (var usage in usageStats) {
+        print("Raw UsageInfo: Pkg: ${usage.packageName}, Time: ${usage.totalTimeInForeground}, First: ${usage.firstTimeStamp}, Last: ${usage.lastTimeStamp}, LastUsed: ${usage.lastTimeUsed}");
+      }
+      
+      // Filter out entries with null, empty, or zero foreground time
+      usageStats.removeWhere((usage) {
+        final timeInForeground = usage.totalTimeInForeground;
+        if (timeInForeground == null || timeInForeground.isEmpty) return true;
+        final parsedTime = int.tryParse(timeInForeground);
+        return parsedTime == null || parsedTime == 0;
+      });
+      print("Filtered usageStats count: ${usageStats.length}");
+
+
+      List<AppUsage> realAppUsage = [];
+      for (var usage in usageStats) {
+        if (usage.packageName != null && usage.totalTimeInForeground != null) {
+          String appName = usage.packageName!;
+          if (appName.contains('.')) {
+            appName = appName.substring(appName.lastIndexOf('.') + 1);
+            appName = appName[0].toUpperCase() + appName.substring(1);
+          }
+          
+          // A more robust check for social media apps
+          bool isSocial = socialMediaApps.any((socialApp) =>
+              usage.packageName!.toLowerCase().contains(socialApp.toLowerCase()) ||
+              appName.toLowerCase().contains(socialApp.toLowerCase()));
+
+          realAppUsage.add(AppUsage(
+            appName,
+            Duration(milliseconds: int.parse(usage.totalTimeInForeground!)),
+            isSocial
+          ));
+        }
+      }
+      
+      realAppUsage.sort((a, b) => b.usage.compareTo(a.usage));
+      print("Processed realAppUsage count: ${realAppUsage.length}");
+      if (realAppUsage.isEmpty) {
+        print("No real app usage data processed, falling back to sample data.");
+      }
+
+
+      if (mounted) {
+        setState(() {
+          appUsageList = realAppUsage.isNotEmpty ? realAppUsage : _getSampleAppUsage();
+        });
+      }
+
+    } catch (e) {
+      print("Error loading app usage: $e");
+      _loadSampleAppUsage(); // Load sample data in case of any error
+    }
+  }
+
+  void _startUsageMonitoring() {
+    _usageTimer = Timer.periodic(Duration(minutes: 1), (timer) {
+      _checkBreakTime();
+    });
+  }
+
+  void _checkBreakTime() {
+    for (AppUsage app in appUsageList) {
+      if (app.isSocialMedia && app.usage.inMinutes > 0) {
+        if (app.usage.inMinutes % 15 == 0) { // Every 15 minutes
+          _showBreakNotification(app.appName);
+        }
+      }
+    }
+  }
+
+  void _showBreakNotification(String appName) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          backgroundColor: Color(0xFF1A1A1A),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+            side: BorderSide(color: Colors.cyanAccent.withOpacity(0.5)),
+          ),
+          title: Text(
+            '⏰ Break Time!',
+            style: TextStyle(color: Colors.cyanAccent),
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'You\'ve been using $appName for a while.',
+                style: TextStyle(color: Colors.white70),
+              ),
+              SizedBox(height: 10),
+              Text(
+                motivationMessage,
+                style: TextStyle(
+                  color: Colors.greenAccent,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('5 Min Break', style: TextStyle(color: Colors.cyanAccent)),
+            ),
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text('10 Min Break', style: TextStyle(color: Colors.cyanAccent)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _forceAppExit(appName);
+              },
+              child: Text('Exit App', style: TextStyle(color: Colors.redAccent)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _forceAppExit(String appName) {
+    // In real implementation, use platform channels to close specific apps
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('$appName session ended. Take a break!'),
+        backgroundColor: Colors.greenAccent.withOpacity(0.8),
+      ),
+    );
+  }
+
+  Future<void> _fetchMotivationMessage() async {
+    // For now, using predefined motivational messages
+    // Add http dependency in pubspec.yaml to use API calls
+    List<String> motivationalQuotes = [
+      "Take breaks to refresh your mind and boost productivity!",
+      "Balance is not something you find, it's something you create.",
+      "Your mental health is just as important as your physical health.",
+      "Small breaks lead to big breakthroughs.",
+      "Disconnect to reconnect with yourself.",
+      "Every moment of rest is an investment in your future self.",
+      "Quality time with yourself is never time wasted.",
+    ];
+    
+    setState(() {
+      motivationMessage = (motivationalQuotes..shuffle()).first;
     });
   }
 
   @override
   void dispose() {
-    _pulseController.dispose();
+    _glowController.dispose();
     _usageTimer?.cancel();
+    _breakTimer?.cancel();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('Digital Wellbeing'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildTotalUsageCard(),
-            const SizedBox(height: 24),
-            _buildAppUsageSection(),
-            const SizedBox(height: 24),
-            _buildUsageChart(),
-          ],
+      body: Container(
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color(0xFF0A0A0A),
+              Color(0xFF1A1A2E),
+              Color(0xFF0A0A0A),
+            ],
+          ),
         ),
+        child: SafeArea(
+          child: IndexedStack(
+            index: _selectedIndex,
+            children: [
+              _buildDashboard(),
+              _buildUsageStats(),
+              _buildSettings(),
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: _buildBottomNavBar(),
+    );
+  }
+
+  Widget _buildDashboard() {
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildHeader(),
+          SizedBox(height: 30),
+          _buildMotivationCard(),
+          SizedBox(height: 30),
+          _buildQuickStats(),
+          SizedBox(height: 30),
+          _buildSocialMediaApps(),
+        ],
       ),
     );
   }
 
-  Widget _buildTotalUsageCard() {
+  Widget _buildHeader() {
     return AnimatedBuilder(
-      animation: _pulseAnimation,
+      animation: _glowAnimation,
       builder: (context, child) {
-        return Transform.scale(
-          scale: _pulseAnimation.value,
-          child: Container(
-            width: double.infinity,
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  Colors.blue.withOpacity(0.3),
-                  Colors.cyan.withOpacity(0.1),
+        return Container(
+          padding: EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(20),
+            gradient: LinearGradient(
+              colors: [
+                Colors.cyanAccent.withOpacity(0.1),
+                Colors.blueAccent.withOpacity(0.1),
+              ],
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.cyanAccent.withOpacity(_glowAnimation.value * 0.3),
+                blurRadius: 20,
+              ),
+            ],
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.psychology,
+                color: Colors.cyanAccent,
+                size: 40,
+              ),
+              SizedBox(width: 15),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Digital Wellbeing',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: Colors.white,
+                    ),
+                  ),
+                  Text(
+                    'Balance your digital life',
+                    style: TextStyle(
+                      color: Colors.white70,
+                      fontSize: 14,
+                    ),
+                  ),
                 ],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
               ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: Colors.cyanAccent.withOpacity(0.3),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.cyan.withOpacity(0.2),
-                  blurRadius: 20,
-                  spreadRadius: 2,
-                ),
-              ],
-            ),
-            child: Column(
-              children: [
-                const Text(
-                  'Total Screen Time Today',
-                  style: TextStyle(
-                    fontSize: 18,
-                    color: Colors.white70,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  _formatDuration(_totalUsage),
-                  style: const TextStyle(
-                    fontSize: 36,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.cyanAccent,
-                  ),
-                ),
-              ],
-            ),
+            ],
           ),
         );
       },
     );
   }
 
-  Widget _buildAppUsageSection() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'App Usage Breakdown',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
+  Widget _buildMotivationCard() {
+    return Container(
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(15),
+        gradient: LinearGradient(
+          colors: [
+            Colors.greenAccent.withOpacity(0.1),
+            Colors.tealAccent.withOpacity(0.1),
+          ],
         ),
-        const SizedBox(height: 16),
-        ...List.generate(_appUsages.length, (index) {
-          return Container(
-            margin: const EdgeInsets.only(bottom: 12),
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: const Color(0xFF1E1E1E),
-              borderRadius: BorderRadius.circular(15),
-              border: Border.all(
-                color: _appUsages[index].color.withOpacity(0.3),
-                width: 1,
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: _appUsages[index].color.withOpacity(0.1),
-                  blurRadius: 10,
-                  spreadRadius: 1,
-                ),
-              ],
+        border: Border.all(
+          color: Colors.greenAccent.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(
+            Icons.lightbulb_outline,
+            color: Colors.greenAccent,
+            size: 30,
+          ),
+          SizedBox(height: 10),
+          Text(
+            'Daily Motivation',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: Colors.greenAccent,
             ),
-            child: Row(
-              children: [
-                Container(
-                  width: 12,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: _appUsages[index].color,
-                    borderRadius: BorderRadius.circular(6),
-                    boxShadow: [
-                      BoxShadow(
-                        color: _appUsages[index].color.withOpacity(0.5),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        _appUsages[index].name,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Text(
-                        _formatDuration(_appUsages[index].duration),
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: _appUsages[index].color,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
+          ),
+          SizedBox(height: 10),
+          Text(
+            motivationMessage,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 16,
+              fontStyle: FontStyle.italic,
             ),
-          );
-        }),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildQuickStats() {
+    final totalUsage = appUsageList.fold<Duration>(
+      Duration.zero,
+      (total, app) => total + app.usage,
+    );
+    
+    final socialMediaUsage = appUsageList
+        .where((app) => app.isSocialMedia)
+        .fold<Duration>(Duration.zero, (total, app) => total + app.usage);
+
+    return Row(
+      children: [
+        Expanded(child: _buildStatCard('Total Screen Time', _formatDuration(totalUsage), Icons.phone_android, Colors.blueAccent)),
+        SizedBox(width: 15),
+        Expanded(child: _buildStatCard('Social Media', _formatDuration(socialMediaUsage), Icons.group, Colors.pinkAccent)),
       ],
     );
   }
 
-  Widget _buildUsageChart() {
+  Widget _buildStatCard(String title, String value, IconData icon, Color color) {
     return Container(
-      padding: const EdgeInsets.all(20),
+      padding: EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(15),
+        color: Color(0xFF1A1A1A),
         border: Border.all(
-          color: Colors.purple.withOpacity(0.3),
+          color: color.withOpacity(0.3),
           width: 1,
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.purple.withOpacity(0.1),
-            blurRadius: 15,
-            spreadRadius: 2,
+            color: color.withOpacity(0.1),
+            blurRadius: 10,
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Weekly Usage Trend',
+          Icon(icon, color: color, size: 30),
+          SizedBox(height: 10),
+          Text(
+            value,
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 20,
               fontWeight: FontWeight.bold,
               color: Colors.white,
             ),
           ),
-          const SizedBox(height: 20),
-          SizedBox(
-            height: 100,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: List.generate(7, (index) {
-                double height = 20 + (index * 10.0) + (sin(index) * 20);
-                return Container(
-                  width: 20,
-                  height: height,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        Colors.purple,
-                        Colors.pinkAccent,
-                      ],
-                      begin: Alignment.bottomCenter,
-                      end: Alignment.topCenter,
-                    ),
-                    borderRadius: BorderRadius.circular(10),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.purple.withOpacity(0.4),
-                        blurRadius: 8,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                );
-              }),
+          Text(
+            title,
+            style: TextStyle(
+              color: Colors.white70,
+              fontSize: 12,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSocialMediaApps() {
+    final socialApps = appUsageList.where((app) => app.isSocialMedia).toList();
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Social Media Usage',
+          style: TextStyle(
+            fontSize: 20,
+            fontWeight: FontWeight.bold,
+            color: Colors.white,
+          ),
+        ),
+        SizedBox(height: 15),
+        ...socialApps.map((app) => _buildAppUsageCard(app)).toList(),
+      ],
+    );
+  }
+
+  Widget _buildAppUsageCard(AppUsage app) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 10),
+      padding: EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: Color(0xFF1A1A1A),
+        border: Border.all(
+          color: Colors.redAccent.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          CircleAvatar(
+            backgroundColor: Colors.redAccent.withOpacity(0.2),
+            child: Text(
+              app.appName[0],
+              style: TextStyle(
+                color: Colors.redAccent,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  app.appName,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  _formatDuration(app.usage),
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: () => _showBreakNotification(app.appName),
+            icon: Icon(
+              Icons.timer,
+              color: Colors.orangeAccent,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildUsageStats() {
+    return Padding(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Usage Statistics',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          SizedBox(height: 20),
+          Expanded(
+            child: ListView.builder(
+              itemCount: appUsageList.length,
+              itemBuilder: (context, index) {
+                final app = appUsageList[index];
+                return _buildDetailedAppCard(app);
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDetailedAppCard(AppUsage app) {
+    return Container(
+      margin: EdgeInsets.only(bottom: 15),
+      padding: EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(15),
+        color: Color(0xFF1A1A1A),
+        border: Border.all(
+          color: app.isSocialMedia 
+              ? Colors.redAccent.withOpacity(0.3)
+              : Colors.blueAccent.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: app.isSocialMedia 
+                    ? Colors.redAccent.withOpacity(0.2)
+                    : Colors.blueAccent.withOpacity(0.2),
+                child: Text(
+                  app.appName[0],
+                  style: TextStyle(
+                    color: app.isSocialMedia ? Colors.redAccent : Colors.blueAccent,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              SizedBox(width: 15),
+              Expanded(
+                child: Text(
+                  app.appName,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              if (app.isSocialMedia)
+                Chip(
+                  label: Text('Social'),
+                  backgroundColor: Colors.redAccent.withOpacity(0.2),
+                  labelStyle: TextStyle(color: Colors.redAccent, fontSize: 12),
+                ),
+            ],
+          ),
+          SizedBox(height: 15),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Usage Time: ${_formatDuration(app.usage)}',
+                style: TextStyle(color: Colors.white70),
+              ),
+              if (app.isSocialMedia)
+                ElevatedButton(
+                  onPressed: () => _showBreakNotification(app.appName),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.orangeAccent.withOpacity(0.2),
+                    foregroundColor: Colors.orangeAccent,
+                  ),
+                  child: Text('Take Break'),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettings() {
+    return Padding(
+      padding: EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Settings',
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: Colors.white,
+            ),
+          ),
+          SizedBox(height: 30),
+          _buildSettingsTile(
+            'Break Reminders',
+            'Get notified to take breaks',
+            Icons.notifications_active,
+            Colors.greenAccent,
+            _settingsBreakReminders,
+            (newValue) => setState(() => _settingsBreakReminders = newValue),
+          ),
+          _buildSettingsTile(
+            'Usage Tracking',
+            'Monitor app usage time',
+            Icons.track_changes,
+            Colors.blueAccent,
+            _settingsUsageTracking,
+            (newValue) => setState(() => _settingsUsageTracking = newValue),
+          ),
+          _buildSettingsTile(
+            'Social Media Limits',
+            'Set time limits for social apps',
+            Icons.timer_off,
+            Colors.redAccent,
+            _settingsSocialMediaLimits,
+            (newValue) => setState(() => _settingsSocialMediaLimits = newValue),
+          ),
+          _buildSettingsTile(
+            'Daily Motivation',
+            'Receive daily motivational quotes',
+            Icons.lightbulb,
+            Colors.yellowAccent,
+            _settingsDailyMotivation,
+            (newValue) => setState(() => _settingsDailyMotivation = newValue),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSettingsTile(String title, String subtitle, IconData icon, Color color, bool value, ValueChanged<bool> onChanged) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 15),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(15),
+        color: Color(0xFF1A1A1A),
+        border: Border.all(
+          color: color.withOpacity(0.3),
+          width: 1,
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: color, size: 30),
+          const SizedBox(width: 15),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 14,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeColor: color,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBottomNavBar() {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFF1A1A1A),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.cyanAccent.withOpacity(0.1),
+            blurRadius: 20,
+          ),
+        ],
+      ),
+      child: BottomNavigationBar(
+        currentIndex: _selectedIndex,
+        onTap: (index) => setState(() => _selectedIndex = index),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        selectedItemColor: Colors.cyanAccent,
+        unselectedItemColor: Colors.white54,
+        type: BottomNavigationBarType.fixed,
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.dashboard),
+            label: 'Dashboard',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.bar_chart),
+            label: 'Stats',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.settings),
+            label: 'Settings',
           ),
         ],
       ),
@@ -389,457 +829,10 @@ class _UsageMonitoringScreenState extends State<UsageMonitoringScreen>
   }
 }
 
-class NotificationsScreen extends StatefulWidget {
-  const NotificationsScreen({Key? key}) : super(key: key);
-
-  @override
-  State<NotificationsScreen> createState() => _NotificationsScreenState();
-}
-
-class _NotificationsScreenState extends State<NotificationsScreen>
-    with TickerProviderStateMixin {
-  bool _breakRemindersEnabled = true;
-  bool _usageLimitsEnabled = false;
-  int _breakInterval = 30; // minutes
-  late AnimationController _switchController;
-  late Animation<Color?> _switchAnimation;
-  Timer? _breakTimer;
-  int _minutesUntilBreak = 30;
-
-  @override
-  void initState() {
-    super.initState();
-    _switchController = AnimationController(
-      duration: const Duration(milliseconds: 300),
-      vsync: this,
-    );
-    _switchAnimation = ColorTween(
-      begin: Colors.grey,
-      end: Colors.cyanAccent,
-    ).animate(_switchController);
-    
-    if (_breakRemindersEnabled) {
-      _startBreakTimer();
-    }
-  }
-
-  void _startBreakTimer() {
-    _breakTimer?.cancel();
-    _breakTimer = Timer.periodic(const Duration(minutes: 1), (timer) {
-      setState(() {
-        _minutesUntilBreak--;
-        if (_minutesUntilBreak <= 0) {
-          _showBreakReminder();
-          _minutesUntilBreak = _breakInterval;
-        }
-      });
-    });
-  }
-
-  void _showBreakReminder() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: const Color(0xFF1E1E1E),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(20),
-          side: BorderSide(
-            color: Colors.cyanAccent.withOpacity(0.3),
-            width: 1,
-          ),
-        ),
-        title: Row(
-          children: [
-            Icon(Icons.pause_circle, color: Colors.cyanAccent, size: 28),
-            const SizedBox(width: 12),
-            const Text(
-              'Time for a Break!',
-              style: TextStyle(color: Colors.white),
-            ),
-          ],
-        ),
-        content: const Text(
-          'You\'ve been using your device for a while. Take a 5-minute break to rest your eyes and stretch.',
-          style: TextStyle(color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Later', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.pop(context);
-              // Here you could implement break activities
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.cyanAccent,
-              foregroundColor: Colors.black,
-            ),
-            child: const Text('Start Break'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  void dispose() {
-    _switchController.dispose();
-    _breakTimer?.cancel();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Smart Notifications'),
-        centerTitle: true,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildBreakReminderCard(),
-            const SizedBox(height: 24),
-            _buildNotificationSettings(),
-            const SizedBox(height: 24),
-            _buildBreakActivities(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBreakReminderCard() {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.green.withOpacity(0.3),
-            Colors.teal.withOpacity(0.1),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: Colors.greenAccent.withOpacity(0.3),
-          width: 1,
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.green.withOpacity(0.2),
-            blurRadius: 20,
-            spreadRadius: 2,
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Icon(
-            Icons.timer,
-            size: 48,
-            color: Colors.greenAccent,
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Next Break Reminder',
-            style: TextStyle(
-              fontSize: 18,
-              color: Colors.white70,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '$_minutesUntilBreak minutes',
-            style: const TextStyle(
-              fontSize: 32,
-              fontWeight: FontWeight.bold,
-              color: Colors.greenAccent,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNotificationSettings() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Notification Settings',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 16),
-        _buildSettingCard(
-          'Break Reminders',
-          'Get notified to take regular breaks',
-          _breakRemindersEnabled,
-          (value) {
-            setState(() {
-              _breakRemindersEnabled = value;
-              if (value) {
-                _startBreakTimer();
-                _switchController.forward();
-              } else {
-                _breakTimer?.cancel();
-                _switchController.reverse();
-              }
-            });
-          },
-          Icons.access_time,
-        ),
-        const SizedBox(height: 12),
-        _buildSettingCard(
-          'Usage Limits',
-          'Alert when approaching daily limits',
-          _usageLimitsEnabled,
-          (value) {
-            setState(() {
-              _usageLimitsEnabled = value;
-            });
-          },
-          Icons.warning,
-        ),
-        const SizedBox(height: 16),
-        _buildIntervalSelector(),
-      ],
-    );
-  }
-
-  Widget _buildSettingCard(String title, String subtitle, bool value,
-      Function(bool) onChanged, IconData icon) {
-    return AnimatedBuilder(
-      animation: _switchAnimation,
-      builder: (context, child) {
-        return Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: const Color(0xFF1E1E1E),
-            borderRadius: BorderRadius.circular(15),
-            border: Border.all(
-              color: value
-                  ? Colors.cyanAccent.withOpacity(0.3)
-                  : Colors.grey.withOpacity(0.2),
-              width: 1,
-            ),
-            boxShadow: value
-                ? [
-                    BoxShadow(
-                      color: Colors.cyanAccent.withOpacity(0.1),
-                      blurRadius: 10,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                color: value ? Colors.cyanAccent : Colors.grey,
-                size: 24,
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: Colors.white70,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Switch(
-                value: value,
-                onChanged: onChanged,
-                activeColor: Colors.cyanAccent,
-                inactiveTrackColor: Colors.grey.withOpacity(0.3),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildIntervalSelector() {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: const Color(0xFF1E1E1E),
-        borderRadius: BorderRadius.circular(15),
-        border: Border.all(
-          color: Colors.orange.withOpacity(0.3),
-          width: 1,
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.schedule, color: Colors.orange, size: 24),
-              const SizedBox(width: 12),
-              const Text(
-                'Break Interval',
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [15, 30, 45, 60].map((minutes) {
-              bool isSelected = _breakInterval == minutes;
-              return Expanded(
-                child: GestureDetector(
-                  onTap: () {
-                    setState(() {
-                      _breakInterval = minutes;
-                      _minutesUntilBreak = minutes;
-                    });
-                  },
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 4),
-                    padding: const EdgeInsets.symmetric(vertical: 8),
-                    decoration: BoxDecoration(
-                      color: isSelected
-                          ? Colors.orange.withOpacity(0.2)
-                          : Colors.transparent,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isSelected
-                            ? Colors.orange
-                            : Colors.grey.withOpacity(0.3),
-                        width: 1,
-                      ),
-                    ),
-                    child: Text(
-                      '${minutes}m',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: isSelected ? Colors.orange : Colors.white70,
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                      ),
-                    ),
-                  ),
-                ),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildBreakActivities() {
-    final activities = [
-      {'icon': Icons.visibility, 'title': 'Eye Exercises', 'color': Colors.blue},
-      {'icon': Icons.self_improvement, 'title': 'Meditation', 'color': Colors.purple},
-      {'icon': Icons.directions_walk, 'title': 'Quick Walk', 'color': Colors.green},
-      {'icon': Icons.water_drop, 'title': 'Hydrate', 'color': Colors.cyan},
-    ];
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Suggested Break Activities',
-          style: TextStyle(
-            fontSize: 22,
-            fontWeight: FontWeight.bold,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 16),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            childAspectRatio: 1.5,
-            crossAxisSpacing: 12,
-            mainAxisSpacing: 12,
-          ),
-          itemCount: activities.length,
-          itemBuilder: (context, index) {
-            final activity = activities[index];
-            return Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: const Color(0xFF1E1E1E),
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(
-                  color: (activity['color'] as Color).withOpacity(0.3),
-                  width: 1,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: (activity['color'] as Color).withOpacity(0.1),
-                    blurRadius: 10,
-                    spreadRadius: 1,
-                  ),
-                ],
-              ),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    activity['icon'] as IconData,
-                    size: 32,
-                    color: activity['color'] as Color,
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    activity['title'] as String,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      ],
-    );
-  }
-}
-
 class AppUsage {
-  final String name;
-  final Duration duration;
-  final Color color;
+  final String appName;
+  final Duration usage;
+  final bool isSocialMedia;
 
-  AppUsage(this.name, this.duration, this.color);
+  AppUsage(this.appName, this.usage, this.isSocialMedia);
 }

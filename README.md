@@ -1,4 +1,4 @@
-# digital_wellbeing_app
+# wellbeing
 
 A new Flutter project.
 
